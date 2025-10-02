@@ -1,0 +1,200 @@
+using EstoqueService.Data;
+using EstoqueService.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
+using RabbitMQ.Client;
+using RabbitMQ.Client.Exceptions;
+using System.Text;
+using System.Text.Json;
+
+namespace EstoqueService.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    public class ProdutosController : ControllerBase
+    {
+        private readonly EstoqueContext _context;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<ProdutosController> _logger;
+
+        public ProdutosController(
+            EstoqueContext context,
+            IConfiguration configuration,
+            ILogger<ProdutosController> logger)
+        {
+            _context = context;
+            _configuration = configuration;
+            _logger = logger;
+        }
+
+        // =====================
+        // GETs
+        // =====================
+
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<Produto>>> GetProdutos()
+        {
+            return await _context.Produtos.ToListAsync();
+        }
+
+        [HttpGet("{id}")]
+        public async Task<ActionResult<Produto>> GetProduto(int id)
+        {
+            var produto = await _context.Produtos.FindAsync(id);
+            if (produto == null) return NotFound();
+            return produto;
+        }
+
+        [HttpGet("{id}/disponibilidade/{quantidade}")]
+        public async Task<ActionResult<bool>> VerificarDisponibilidade(int id, int quantidade)
+        {
+            var produto = await _context.Produtos.FindAsync(id);
+            if (produto == null) return NotFound();
+
+            return Ok(produto.Quantidade >= quantidade);
+        }
+
+        // =====================
+        // POST (CRIAR)
+        // =====================
+
+        [HttpPost]
+        [Authorize] // 🔒 Requer token JWT
+        public async Task<ActionResult<Produto>> CreateProduto([FromBody] Produto produto)
+        {
+            if (produto == null)
+                return BadRequest("Produto inválido.");
+
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            try
+            {
+                _context.Produtos.Add(produto);
+                await _context.SaveChangesAsync();
+
+                EnviarMensagemRabbitMQ(produto, "ProdutoCriado");
+
+                return CreatedAtAction(nameof(GetProduto), new { id = produto.Id }, produto);
+            }
+            catch (DbUpdateException ex)
+            {
+                _logger.LogError(ex, "Erro ao salvar produto no banco de dados.");
+                return StatusCode(500, "Erro interno ao salvar produto.");
+            }
+        }
+
+        // =====================
+        // PUT (ATUALIZAR)
+        // =====================
+
+        [HttpPut("{id}")]
+        [Authorize]
+        public async Task<IActionResult> UpdateProduto(int id, [FromBody] Produto produto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            // Se o ID do corpo for diferente de zero e não bater com o da rota
+            if (produto.Id != 0 && produto.Id != id)
+                return BadRequest();
+
+            var existente = await _context.Produtos.FindAsync(id);
+            if (existente == null) return NotFound();
+
+            existente.Nome = produto.Nome;
+            existente.Descricao = produto.Descricao;
+            existente.Preco = produto.Preco;
+            existente.Quantidade = produto.Quantidade;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+                EnviarMensagemRabbitMQ(existente, "ProdutoAtualizado");
+                return NoContent();
+            }
+            catch (DbUpdateException ex)
+            {
+                _logger.LogError(ex, "Erro ao atualizar produto no banco de dados.");
+                return StatusCode(500, "Erro interno ao atualizar produto.");
+            }
+        }
+        // =====================
+        // DELETE
+        // =====================
+
+        [HttpDelete("{id}")]
+        [Authorize]
+        public async Task<IActionResult> DeleteProduto(int id)
+        {
+            var produto = await _context.Produtos.FindAsync(id);
+            if (produto == null) return NotFound();
+
+            _context.Produtos.Remove(produto);
+
+            try
+            {
+                await _context.SaveChangesAsync();
+                EnviarMensagemRabbitMQ(produto, "ProdutoRemovido");
+                return NoContent();
+            }
+            catch (DbUpdateException ex)
+            {
+                _logger.LogError(ex, "Erro ao remover produto do banco de dados.");
+                return StatusCode(500, "Erro interno ao remover produto.");
+            }
+        }
+
+        // =====================
+        // RABBITMQ
+        // =====================
+
+        private void EnviarMensagemRabbitMQ(Produto produto, string evento)
+        {
+            var factory = new ConnectionFactory()
+            {
+                HostName = _configuration["RabbitMQ:HostName"] ?? "localhost",
+                UserName = _configuration["RabbitMQ:UserName"] ?? "admin",
+                Password = _configuration["RabbitMQ:Password"] ?? "admin",
+                Port = int.TryParse(_configuration["RabbitMQ:Port"], out var port) ? port : 5672
+            };
+
+            try
+            {
+                using var connection = factory.CreateConnection();
+                using var channel = connection.CreateModel();
+
+                channel.QueueDeclare(
+                    queue: "estoque_eventos",
+                    durable: true,
+                    exclusive: false,
+                    autoDelete: false,
+                    arguments: null
+                );
+
+                var mensagem = new
+                {
+                    Evento = evento,
+                    Produto = produto
+                };
+
+                var json = JsonSerializer.Serialize(mensagem);
+                var body = Encoding.UTF8.GetBytes(json);
+
+                channel.BasicPublish(
+                    exchange: "",
+                    routingKey: "estoque_eventos",
+                    basicProperties: null,
+                    body: body
+                );
+
+                _logger.LogInformation($"Mensagem enviada para RabbitMQ: {evento}, ProdutoID: {produto.Id}");
+            }
+            catch (BrokerUnreachableException ex)
+            {
+                _logger.LogError(ex, "Erro ao enviar mensagem para RabbitMQ");
+            }
+        }
+    }
+}

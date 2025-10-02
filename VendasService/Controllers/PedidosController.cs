@@ -1,0 +1,353 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using VendasService.Data;
+using VendasService.Models;
+using VendasService.Models.Dto;
+using VendasService.Services;
+using Microsoft.AspNetCore.Authorization;
+
+namespace VendasService.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize] // 🔐 Exige JWT em todos os endpoints
+    public class PedidosController : ControllerBase
+    {
+        private readonly VendasContext _context;
+        private readonly IRabbitMqProducerService _rabbitMqService;
+        private readonly IEstoqueClientService _estoqueClient;
+        private readonly ILogger<PedidosController> _logger;
+
+        public PedidosController(
+            VendasContext context,
+            IRabbitMqProducerService rabbitMqService,
+            IEstoqueClientService estoqueClient,
+            ILogger<PedidosController> logger)
+        {
+            _context = context;
+            _rabbitMqService = rabbitMqService;
+            _estoqueClient = estoqueClient;
+            _logger = logger;
+        }
+
+        // =======================
+        // GET ALL (com limite)
+        // =======================
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<Pedido>>> GetPedidos([FromQuery] int top = 10)
+        {
+            var pedidos = await _context.Pedidos
+                .Include(p => p.Itens)
+                .OrderByDescending(p => p.DataPedido)
+                .Take(top)
+                .ToListAsync();
+
+            return Ok(pedidos);
+        }
+
+        // =======================
+        // GET AVANÇADO COM FILTROS
+        // =======================
+        [HttpGet("consulta")]
+        public async Task<ActionResult<IEnumerable<Pedido>>> ConsultaPedidos(
+            [FromQuery] string? clienteNome = null,
+            [FromQuery] DateTime? dataInicio = null,
+            [FromQuery] DateTime? dataFim = null,
+            [FromQuery] string ordenarPor = "dataPedido",
+            [FromQuery] string direcao = "desc",
+            [FromQuery] int pagina = 1,
+            [FromQuery] int tamanhoPagina = 10)
+        {
+            var query = _context.Pedidos.Include(p => p.Itens).AsQueryable();
+
+            // Filtro por nome do cliente
+            if (!string.IsNullOrWhiteSpace(clienteNome))
+                query = query.Where(p => p.ClienteNome.Contains(clienteNome));
+
+            // Filtro por intervalo de datas
+            if (dataInicio.HasValue)
+                query = query.Where(p => p.DataPedido >= dataInicio.Value);
+            if (dataFim.HasValue)
+                query = query.Where(p => p.DataPedido <= dataFim.Value);
+
+            // Ordenação
+            query = (ordenarPor.ToLower(), direcao.ToLower()) switch
+            {
+                ("clientenome", "asc") => query.OrderBy(p => p.ClienteNome),
+                ("clientenome", "desc") => query.OrderByDescending(p => p.ClienteNome),
+                ("datapedido", "asc") => query.OrderBy(p => p.DataPedido),
+                _ => query.OrderByDescending(p => p.DataPedido), // padrão
+            };
+
+            // Paginação
+            var totalItens = await query.CountAsync();
+            var totalPaginas = (int)Math.Ceiling(totalItens / (double)tamanhoPagina);
+
+            var pedidos = await query
+                .Skip((pagina - 1) * tamanhoPagina)
+                .Take(tamanhoPagina)
+                .ToListAsync();
+
+            // Retorno com meta-dados de paginação
+            var resultado = new
+            {
+                PaginaAtual = pagina,
+                TotalPaginas = totalPaginas,
+                TotalItens = totalItens,
+                Pedidos = pedidos
+            };
+
+            return Ok(resultado);
+        }
+
+        // =======================
+        // GET BY ID
+        // =======================
+        [HttpGet("{id:int}")]
+        public async Task<ActionResult<Pedido>> GetPedido(int id)
+        {
+            var pedido = await _context.Pedidos
+                .Include(p => p.Itens)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (pedido == null)
+                return NotFound(new { message = $"Pedido {id} não encontrado." });
+
+            return Ok(pedido);
+        }
+
+        // =======================
+        // CREATE
+        // =======================
+        [HttpPost]
+        public async Task<ActionResult<Pedido>> CreatePedido([FromBody] PedidoCreateDto pedidoDto)
+        {
+            if (pedidoDto == null || string.IsNullOrWhiteSpace(pedidoDto.ClienteNome))
+                return BadRequest(new { message = "ClienteNome é obrigatório." });
+
+            if (pedidoDto.Itens == null || !pedidoDto.Itens.Any())
+                return BadRequest(new { message = "É necessário informar ao menos 1 item no pedido." });
+
+            var itens = new List<PedidoItem>();
+
+            foreach (var itemDto in pedidoDto.Itens)
+            {
+                try
+                {
+                    var produto = await _estoqueClient.GetProdutoAsync(itemDto.ProdutoId);
+                    if (produto == null)
+                        return NotFound(new { message = $"Produto {itemDto.ProdutoId} não encontrado no estoque." });
+
+                    if (produto.Quantidade < itemDto.Quantidade)
+                        return BadRequest(new { message = $"Estoque insuficiente para ProdutoId {itemDto.ProdutoId}. Disponível: {produto.Quantidade}, solicitado: {itemDto.Quantidade}" });
+
+                    itens.Add(new PedidoItem
+                    {
+                        ProdutoId = itemDto.ProdutoId,
+                        Quantidade = itemDto.Quantidade,
+                        ValorTotal = itemDto.Quantidade * produto.Preco
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Erro ao consultar produto {ProdutoId} no estoque", itemDto.ProdutoId);
+                    return StatusCode(503, new { message = "Serviço de estoque indisponível." });
+                }
+            }
+
+            var pedido = new Pedido
+            {
+                ClienteNome = pedidoDto.ClienteNome,
+                Itens = itens,
+                DataPedido = DateTime.UtcNow
+            };
+
+            _context.Pedidos.Add(pedido);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Pedido {PedidoId} criado com sucesso", pedido.Id);
+
+            // Publica evento no RabbitMQ
+            try
+            {
+                _rabbitMqService.EnviarPedido(new PedidoMessage
+                {
+                    PedidoId = pedido.Id,
+                    Itens = pedido.Itens.Select(i => new PedidoItemMessage
+                    {
+                        ProdutoId = i.ProdutoId,
+                        Quantidade = i.Quantidade
+                    }).ToList()
+                });
+                _logger.LogInformation("Evento RabbitMQ enviado para pedido {PedidoId}", pedido.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Falha ao enviar evento RabbitMQ para pedido {PedidoId}", pedido.Id);
+            }
+
+            var pedidoCompleto = await _context.Pedidos
+                .Include(p => p.Itens)
+                .FirstOrDefaultAsync(p => p.Id == pedido.Id);
+
+            return CreatedAtAction(nameof(GetPedido), new { id = pedido.Id }, pedidoCompleto);
+        }
+
+        // =======================
+        // UPDATE
+        // =======================
+        [HttpPut("{id:int}")]
+        public async Task<IActionResult> UpdatePedido(int id, [FromBody] PedidoUpdateDto pedidoDto)
+        {
+            if (pedidoDto == null)
+                return BadRequest(new { message = "Pedido inválido." });
+
+            var existente = await _context.Pedidos
+                .Include(p => p.Itens)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (existente == null)
+                return NotFound(new { message = $"Pedido {id} não encontrado." });
+
+            existente.ClienteNome = pedidoDto.ClienteNome ?? existente.ClienteNome;
+            existente.Itens.Clear();
+
+            if (pedidoDto.Itens != null)
+            {
+                foreach (var itemDto in pedidoDto.Itens)
+                {
+                    try
+                    {
+                        var produto = await _estoqueClient.GetProdutoAsync(itemDto.ProdutoId);
+                        if (produto == null)
+                            return NotFound(new { message = $"Produto {itemDto.ProdutoId} não encontrado no estoque." });
+
+                        if (produto.Quantidade < itemDto.Quantidade)
+                            return BadRequest(new { message = $"Estoque insuficiente para ProdutoId {itemDto.ProdutoId}. Disponível: {produto.Quantidade}, solicitado: {itemDto.Quantidade}" });
+
+                        existente.Itens.Add(new PedidoItem
+                        {
+                            ProdutoId = itemDto.ProdutoId,
+                            Quantidade = itemDto.Quantidade,
+                            ValorTotal = itemDto.Quantidade * produto.Preco
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Erro ao consultar produto {ProdutoId} no estoque", itemDto.ProdutoId);
+                        return StatusCode(503, new { message = "Serviço de estoque indisponível." });
+                    }
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Pedido {PedidoId} atualizado com sucesso", id);
+
+            return NoContent();
+        }
+
+        // =======================
+        // DELETE
+        // =======================
+        [HttpDelete("{id:int}")]
+        public async Task<IActionResult> DeletePedido(int id)
+        {
+            var pedido = await _context.Pedidos
+                .Include(p => p.Itens)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (pedido == null)
+                return NotFound(new { message = $"Pedido {id} não encontrado." });
+
+            _context.Pedidos.Remove(pedido);
+            await _context.SaveChangesAsync();
+
+            try
+            {
+                _rabbitMqService.EnviarPedido(new PedidoMessage
+                {
+                    PedidoId = pedido.Id,
+                    Itens = new List<PedidoItemMessage>() // Pedido excluído
+                });
+                _logger.LogInformation("Evento RabbitMQ enviado para exclusão do pedido {PedidoId}", pedido.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Falha ao enviar evento RabbitMQ para exclusão do pedido {PedidoId}", pedido.Id);
+            }
+
+            _logger.LogInformation("Pedido {PedidoId} removido com sucesso", pedido.Id);
+            return NoContent();
+        }
+
+        // =======================
+        // REENVIAR PARA RABBIT
+        // =======================
+        [HttpPost("reenviar-rabbit/{id:int}")]
+        public async Task<IActionResult> ReenviarPedidoRabbit(int id)
+        {
+            var pedido = await _context.Pedidos
+                .Include(p => p.Itens)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (pedido == null)
+                return NotFound(new { message = $"Pedido {id} não encontrado." });
+
+            try
+            {
+                _rabbitMqService.EnviarPedido(new PedidoMessage
+                {
+                    PedidoId = pedido.Id,
+                    Itens = pedido.Itens.Select(i => new PedidoItemMessage
+                    {
+                        ProdutoId = i.ProdutoId,
+                        Quantidade = i.Quantidade
+                    }).ToList()
+                });
+
+                _logger.LogInformation("Pedido {PedidoId} reenviado com sucesso para RabbitMQ", pedido.Id);
+                return Ok(new { message = $"Pedido {pedido.Id} reenviado para RabbitMQ." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erro ao reenviar pedido {PedidoId} para RabbitMQ", pedido.Id);
+                return StatusCode(500, new { message = "Erro ao reenviar pedido para RabbitMQ." });
+            }
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

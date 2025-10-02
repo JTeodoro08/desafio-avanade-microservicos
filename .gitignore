@@ -1,0 +1,53 @@
+# Compiled binaries
+bin/
+obj/
+out/
+
+# Build results
+*.exe
+*.dll
+*.pdb
+*.cache
+*.log
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Rider
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+
+# Logs
+*.log
+
+# Dotnet tools
+.dotnet/
+*.db
+
+# Coverage / Test
+TestResults/
+*.coverage
+*.coveragexml
+
+# Docker
+docker-compose.override.yml
+.env
+
+# Publish
+publish/
