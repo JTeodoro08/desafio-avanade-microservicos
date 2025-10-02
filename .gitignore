@@ -8,7 +8,6 @@ out/
 *.dll
 *.pdb
 *.cache
-*.log
 
 # User-specific files
 *.user
@@ -51,3 +50,4 @@ docker-compose.override.yml
 
 # Publish
 publish/
+
