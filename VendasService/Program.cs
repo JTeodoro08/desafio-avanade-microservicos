@@ -16,13 +16,19 @@ namespace VendasService
             var builder = WebApplication.CreateBuilder(args);
 
             // =====================
-            // 📋 Logger com timestamp
+            // 📋 Logger limpo estilo EstoqueService
             builder.Logging.ClearProviders();
             builder.Logging.AddSimpleConsole(options =>
             {
-                options.TimestampFormat = "[yyyy-MM-dd HH:mm:ss] ";
-                options.IncludeScopes = true;
+                options.TimestampFormat = "[yyyy-MM-dd HH:mm:ss] "; // timestamp
+                options.IncludeScopes = false; // remove SpanId/TraceId/ParentId/ConnectionId
             });
+
+            // =====================
+            // 🔹 Filtrar logs verbosos do framework
+            builder.Logging.AddFilter("Microsoft", LogLevel.Warning);
+            builder.Logging.AddFilter("System", LogLevel.Warning);
+            builder.Logging.AddFilter("VendasService", LogLevel.Information);
 
             // =====================
             // 🗄️ Configuração do DbContext
@@ -60,7 +66,7 @@ namespace VendasService
             })
             .AddJwtBearer(options =>
             {
-                options.RequireHttpsMetadata = false; // Apenas para dev
+                options.RequireHttpsMetadata = false;
                 options.SaveToken = true;
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
@@ -137,14 +143,10 @@ namespace VendasService
             }
 
             app.UseHttpsRedirection();
-
             app.UseAuthentication();
             app.UseAuthorization();
-
             app.UseCors();
-
             app.MapControllers();
-
             app.Run();
         }
     }
@@ -166,6 +168,8 @@ namespace VendasService
         }
     }
 }
+
+
 
 
 

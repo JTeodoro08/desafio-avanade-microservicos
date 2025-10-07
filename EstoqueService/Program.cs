@@ -1,44 +1,63 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.EntityFrameworkCore;
-using EstoqueService.Data;
 using Microsoft.OpenApi.Models;
 using System.Text;
 using System.Text.Json;
-
+using EstoqueService.Data;
+using EstoqueService.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 📋 Logger com timestamp
+// =====================
+// 🧾 CONFIGURAÇÃO DE LOGS
+// =====================
 builder.Logging.ClearProviders();
 builder.Logging.AddSimpleConsole(options =>
 {
     options.TimestampFormat = "[yyyy-MM-dd HH:mm:ss] ";
-    options.IncludeScopes = true;
+    options.SingleLine = true;
+    options.IncludeScopes = false;
 });
 
+// 🔹 Filtros de Log
+builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.None); // ❌ oculta comandos SQL
+builder.Logging.AddFilter("Microsoft", LogLevel.Warning); // ⚠️ mantém avisos importantes do ASP.NET
+builder.Logging.AddFilter("EstoqueService", LogLevel.Information); // ✅ mantém logs narrativos do serviço
+
 // =====================
-// 🌐 Serviços
+// 🌐 SERVIÇOS
+// =====================
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.WriteIndented = false;
     });
 
 // =====================
-// 🔗 DbContext
+// 💾 DATABASE CONTEXT
+// =====================
 builder.Services.AddDbContext<EstoqueContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-// 🔹 Registrar o RabbitMqConsumer como HostedService
-builder.Services.AddHostedService<EstoqueService.Services.RabbitMqConsumerService>();
-
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"))
+           .EnableSensitiveDataLogging(false)); // impede logs sensíveis do EF Core
 
 // =====================
-// 🔐 JWT Authentication
+// 🐇 RABBITMQ
+// =====================
+// 🔹 Consumer executa em background
+builder.Services.AddHostedService<RabbitMqConsumerService>();
+
+// 🔹 Producer compartilhado em toda a aplicação
+builder.Services.AddSingleton<IRabbitMqProducerService, RabbitMqProducerService>();
+
+// =====================
+// 🔐 AUTENTICAÇÃO JWT
+// =====================
 var jwtSettings = builder.Configuration.GetSection("Jwt");
-var keyString = jwtSettings["Key"]
+var keyString = jwtSettings["Key"] 
     ?? throw new InvalidOperationException("⚠️ JWT Key não configurada no appsettings.json!");
+
 var key = Encoding.UTF8.GetBytes(keyString);
 
 builder.Services.AddAuthentication(options =>
@@ -63,13 +82,18 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 
 // =====================
-// 🔹 Swagger com JWT
+// 📘 SWAGGER + JWT
+// =====================
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "EstoqueService API", Version = "v1" });
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "EstoqueService API",
+        Version = "v1",
+        Description = "API de Gestão de Estoque integrada com RabbitMQ"
+    });
 
-    // Configura o botão "Authorize" para JWT Bearer
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -77,7 +101,7 @@ builder.Services.AddSwaggerGen(c =>
         Scheme = "Bearer",
         BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Description = "Insira o token JWT com o prefixo 'Bearer '"
+        Description = "Insira o token JWT com o prefixo **'Bearer '** antes do token."
     });
 
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -87,13 +111,14 @@ builder.Services.AddSwaggerGen(c =>
             {
                 Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
             },
-            new string[] { }
+            Array.Empty<string>()
         }
     });
 });
 
 // =====================
-// CORS
+// 🌍 CORS
+// =====================
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -107,7 +132,8 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // =====================
-// Swagger
+// 🚀 PIPELINE DE EXECUÇÃO
+// =====================
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -116,21 +142,25 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// 🔐 Autenticação e autorização
+app.UseCors();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
-// 🔹 CORS
-app.UseCors();
-
-// 🔹 Mapear controllers
 app.MapControllers();
 
 app.Run();
 
 // =====================
-// Linha necessária para testes de integração
+// 🔹 Necessário para testes de integração
+// =====================
 public partial class Program { }
+
+
+
+
+
+
 
 
 

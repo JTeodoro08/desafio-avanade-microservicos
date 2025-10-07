@@ -1,6 +1,7 @@
 using EstoqueService.Data;
 using EstoqueService.Models;
 using EstoqueService.Services;
+using EstoqueService.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
@@ -28,18 +29,31 @@ namespace EstoqueService.Controllers
         // =====================
         // GETs
         // =====================
-
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Produto>>> GetProdutos()
         {
-            return await _context.Produtos.ToListAsync();
+            var produtos = await _context.Produtos.ToListAsync();
+
+            foreach (var p in produtos)
+            {
+                EstoqueLogger.LogProduto(_logger, p, "CONSULTA");
+            }
+
+            return produtos;
         }
 
         [HttpGet("{id}")]
         public async Task<ActionResult<Produto>> GetProduto(int id)
         {
             var produto = await _context.Produtos.FindAsync(id);
-            if (produto == null) return NotFound();
+            if (produto == null)
+            {
+                _logger.LogWarning("[ESTOQUE] ⚠️ Produto não encontrado | Id: {Id}", id);
+                return NotFound();
+            }
+
+            EstoqueLogger.LogProduto(_logger, produto, "CONSULTA");
+
             return produto;
         }
 
@@ -47,15 +61,25 @@ namespace EstoqueService.Controllers
         public async Task<ActionResult<bool>> VerificarDisponibilidade(int id, int quantidade)
         {
             var produto = await _context.Produtos.FindAsync(id);
-            if (produto == null) return NotFound();
+            if (produto == null)
+            {
+                _logger.LogWarning("[ESTOQUE] ⚠️ Produto não encontrado ao verificar disponibilidade | Id: {Id}", id);
+                return NotFound();
+            }
 
-            return Ok(produto.Quantidade >= quantidade);
+            var disponivel = produto.Quantidade >= quantidade;
+
+            _logger.LogInformation(
+                "[ESTOQUE] 📊 Disponibilidade | Produto: {Nome} | Solicitado: {QtdSolicitada} | Em estoque: {QtdAtual} | Disponível: {Disponivel}",
+                produto.Nome, quantidade, produto.Quantidade, disponivel
+            );
+
+            return Ok(disponivel);
         }
 
         // =====================
         // POST (CRIAR)
         // =====================
-
         [HttpPost]
         [Authorize]
         public async Task<ActionResult<Produto>> CreateProduto([FromBody] Produto produto)
@@ -71,21 +95,26 @@ namespace EstoqueService.Controllers
                 _context.Produtos.Add(produto);
                 await _context.SaveChangesAsync();
 
-                // Envia evento via RabbitMQ
+                EstoqueLogger.LogProduto(_logger, produto, "CRIADO");
+
                 try
                 {
-                    await _rabbitMq.EnviarProdutoCriadoAsync(MapToMessage(produto));
+                    await _rabbitMq.EnviarProdutoCriadoAsync(produto);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Falha ao enviar evento de criação para RabbitMQ.");
+                    _logger.LogError(
+                        ex,
+                        "[ESTOQUE] ❌ Falha ao enviar evento 'PRODUTO_CRIADO' para RabbitMQ | Produto {Id} - {Nome}",
+                        produto.Id, produto.Nome
+                    );
                 }
 
                 return CreatedAtAction(nameof(GetProduto), new { id = produto.Id }, produto);
             }
             catch (DbUpdateException ex)
             {
-                _logger.LogError(ex, "Erro ao salvar produto no banco de dados.");
+                _logger.LogError(ex, "[ESTOQUE] ❌ Erro ao salvar produto no banco de dados.");
                 return StatusCode(500, "Erro interno ao salvar produto.");
             }
         }
@@ -93,7 +122,6 @@ namespace EstoqueService.Controllers
         // =====================
         // PUT (ATUALIZAR)
         // =====================
-
         [HttpPut("{id}")]
         [Authorize]
         public async Task<IActionResult> UpdateProduto(int id, [FromBody] Produto produto)
@@ -102,10 +130,14 @@ namespace EstoqueService.Controllers
                 return BadRequest(ModelState);
 
             if (produto.Id != 0 && produto.Id != id)
-                return BadRequest();
+                return BadRequest("O ID do produto não confere com o ID informado na URL.");
 
             var existente = await _context.Produtos.FindAsync(id);
-            if (existente == null) return NotFound();
+            if (existente == null)
+            {
+                _logger.LogWarning("[ESTOQUE] ⚠️ Tentativa de atualização em produto inexistente | Id: {Id}", id);
+                return NotFound();
+            }
 
             existente.Nome = produto.Nome;
             existente.Descricao = produto.Descricao;
@@ -116,21 +148,26 @@ namespace EstoqueService.Controllers
             {
                 await _context.SaveChangesAsync();
 
-                // Envia evento via RabbitMQ
+                EstoqueLogger.LogProduto(_logger, existente, "ATUALIZADO");
+
                 try
                 {
-                    await _rabbitMq.EnviarProdutoAtualizadoAsync(MapToMessage(existente));
+                    await _rabbitMq.EnviarProdutoAtualizadoAsync(existente);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Falha ao enviar evento de atualização para RabbitMQ.");
+                    _logger.LogError(
+                        ex,
+                        "[ESTOQUE] ❌ Falha ao enviar evento 'PRODUTO_ATUALIZADO' para RabbitMQ | Produto {Id} - {Nome}",
+                        existente.Id, existente.Nome
+                    );
                 }
 
                 return NoContent();
             }
             catch (DbUpdateException ex)
             {
-                _logger.LogError(ex, "Erro ao atualizar produto no banco de dados.");
+                _logger.LogError(ex, "[ESTOQUE] ❌ Erro ao atualizar produto no banco de dados.");
                 return StatusCode(500, "Erro interno ao atualizar produto.");
             }
         }
@@ -138,13 +175,16 @@ namespace EstoqueService.Controllers
         // =====================
         // DELETE
         // =====================
-
         [HttpDelete("{id}")]
         [Authorize]
         public async Task<IActionResult> DeleteProduto(int id)
         {
             var produto = await _context.Produtos.FindAsync(id);
-            if (produto == null) return NotFound();
+            if (produto == null)
+            {
+                _logger.LogWarning("[ESTOQUE] ⚠️ Tentativa de exclusão de produto inexistente | Id: {Id}", id);
+                return NotFound();
+            }
 
             _context.Produtos.Remove(produto);
 
@@ -152,42 +192,52 @@ namespace EstoqueService.Controllers
             {
                 await _context.SaveChangesAsync();
 
-                // Envia evento via RabbitMQ (só Id é necessário)
+                EstoqueLogger.LogProduto(_logger, produto, "DELETADO");
+
                 try
                 {
                     await _rabbitMq.EnviarProdutoRemovidoAsync(produto.Id);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Falha ao enviar evento de remoção para RabbitMQ.");
+                    _logger.LogError(
+                        ex,
+                        "[ESTOQUE] ❌ Falha ao enviar evento 'PRODUTO_REMOVIDO' para RabbitMQ | Produto {Id} - {Nome}",
+                        produto.Id, produto.Nome
+                    );
                 }
 
                 return NoContent();
             }
             catch (DbUpdateException ex)
             {
-                _logger.LogError(ex, "Erro ao remover produto do banco de dados.");
+                _logger.LogError(ex, "[ESTOQUE] ❌ Erro ao remover produto do banco de dados.");
                 return StatusCode(500, "Erro interno ao remover produto.");
             }
         }
-
-        // =====================
-        // MAPEAMENTO
-        // =====================
-
-        private ProdutoMessage MapToMessage(Produto produto)
-        {
-            return new ProdutoMessage
-            {
-                Id = produto.Id,
-                Nome = produto.Nome,
-                Descricao = produto.Descricao,
-                Preco = produto.Preco,
-                Quantidade = produto.Quantidade
-            };
-        }
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

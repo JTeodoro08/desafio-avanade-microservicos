@@ -5,6 +5,7 @@ using Ocelot.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using ApiGateway.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,7 +44,7 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    options.RequireHttpsMetadata = false; // Apenas dev
+    options.RequireHttpsMetadata = false;
     options.SaveToken = true;
     options.TokenValidationParameters = new TokenValidationParameters
     {
@@ -70,7 +71,8 @@ builder.Services.AddOcelot(builder.Configuration);
 var app = builder.Build();
 
 // =====================
-// Middlewares
+// Middleware customizado de logging
+app.UseMiddleware<ApiGatewayLoggingMiddleware>();
 
 // CORS
 app.UseCors();
@@ -86,13 +88,15 @@ app.MapGet("/", () => Results.Redirect("/swagger"));
 app.UseSwaggerForOcelotUI(opt =>
 {
     opt.PathToSwaggerGenerator = "/swagger/docs";
-    
 });
 
 // Ocelot (sempre por último)
 await app.UseOcelot();
 
 app.Run();
+
+
+
 
 
 

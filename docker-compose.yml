@@ -11,6 +11,10 @@ services:
       - "1433:1433"
     networks:
       - ecommerce-network
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P 'StrongPass@123' -Q 'SELECT 1'"]
+      interval: 10s
+      retries: 5
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -23,7 +27,12 @@ services:
       - "15672:15672"  # Management UI
     networks:
       - ecommerce-network
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      retries: 5
 
 networks:
   ecommerce-network:
     driver: bridge
+

@@ -222,6 +222,147 @@
 
 
 
+Perfeito 👌 Aqui está o **📄 Relatório Atualizado do Projeto – 07/10/2025**, incluindo:
+
+* as **melhorias de logs** recentemente implementadas, e
+* o **aperfeiçoamento futuro** sobre ajuste de estoque em alterações de pedidos.
+
+---
+
+# **Relatório Atualizado do Projeto – 07/10/2025**
+
+#### **Arquitetura Implementada**
+
+**Microserviço 1 (Gestão de Estoque): ✅ Implementado**
+
+* CRUD completo de produtos funcionando.
+* Integração com RabbitMQ para notificações de criação, atualização e remoção.
+* Validação de estoque suficiente ao processar pedidos.
+* Testes unitários xUnit automatizados concluídos com sucesso (**16 testes aprovados**).
+* Testes manuais via Swagger e `curl` confirmados (GET, POST, PUT, DELETE).
+
+**Microserviço 2 (Gestão de Vendas): ✅ Implementado**
+
+* Criação de pedidos via API Gateway com JWT.
+* Envio de eventos para RabbitMQ.
+* Consulta avançada de pedidos (filtros, ordenação, paginação, metadados) funcionando.
+* Testes unitários e de integração com RabbitMQ fake + InMemory DB concluídos.
+
+**API Gateway: ✅ Implementado**
+
+* Roteamento correto para produtos e pedidos.
+* Endpoints protegidos por JWT.
+* Testes manuais e unitários confirmados.
+
+**RabbitMQ: ✅ Implementado**
+
+* Envio e recebimento de mensagens entre microserviços.
+* Eventos de pedidos inválidos tratados e logados.
+* Testes com FakeRabbitMQ confirmados.
+
+**Autenticação JWT: ✅ Implementada**
+
+* Todos os endpoints protegidos.
+* Testes via `curl` confirmam funcionamento no estoque e vendas.
+
+---
+
+#### **Melhorias Recentes Implementadas (Logs e Processamento)**
+
+**🧾 Logs do EstoqueService:**
+
+* Reestruturação completa dos logs do consumidor RabbitMQ.
+* Mensagens de log agora apresentam formatação visual consistente e detalhada.
+* Identificação clara de início e fim de processamento de pedidos (`📥 INÍCIO PROCESSAMENTO` / `✅ Estoque atualizado com sucesso`).
+* Exibição de:
+
+  * Data e hora exata do processamento;
+  * ID do pedido e nome do cliente;
+  * Total de itens processados;
+  * Estoque anterior, quantidade retirada e estoque atualizado para cada produto.
+
+**🧩 Benefícios das melhorias:**
+
+* Facilita rastreamento completo de pedidos entre microserviços.
+* Fornece trilha de auditoria confiável.
+* Melhora a legibilidade e a análise em logs de produção.
+
+---
+
+#### **Planejamentos e Aperfeiçoamentos Futuros**
+
+1. **🔁 Ajuste de estoque em alterações de pedidos (aperfeiçoamento futuro)**
+
+   * Atualmente, o estoque apenas **deduz quantidades novas** de pedidos recebidos.
+   * Futuramente, será implementado cálculo de **diferença entre o pedido anterior e o novo**, permitindo **repor estoque automaticamente** caso a quantidade de um item seja reduzida.
+   * Essa melhoria exigirá:
+
+     * Armazenamento de histórico de pedidos processados no EstoqueService;
+     * Comparação entre quantidades antigas e novas;
+     * Ajuste positivo ou negativo no estoque conforme diferença detectada.
+
+2. **📊 Logs de auditoria detalhada (futuro)**
+
+   * Expansão dos logs para incluir identificação do serviço de origem (ex.: Vendas → Estoque).
+   * Criação de tabela de logs persistentes para auditoria e métricas.
+
+3. **📘 Documentação final (Swagger e README)**
+
+   * Consolidar exemplos de uso e endpoints.
+   * Adicionar seções sobre fluxos assíncronos (RabbitMQ) e autenticação JWT.
+
+---
+
+#### **Checklist Atualizado de Testes**
+
+**Microserviço Estoque (InMemory DB)**
+
+* [x] CRUD completo de produtos
+* [x] Verificação de disponibilidade
+* [x] Recebimento de pedidos via RabbitMQ (estoque suficiente, insuficiente, inexistente)
+* [x] Testes unitários xUnit aprovados
+* [x] Logs detalhados validados em execução real
+
+**Microserviço Vendas (InMemory DB + RabbitMQ fake)**
+
+* [x] Criação de pedidos via API Gateway com JWT
+* [x] Envio de eventos para RabbitMQ após criação
+* [x] Tratamento de erros (estoque/produto inexistente)
+* [x] Consulta avançada de pedidos via API Gateway
+* [x] Testes unitários e integração aprovados
+
+**API Gateway**
+
+* [x] Roteamento correto para estoque e vendas
+* [x] Endpoints protegidos por JWT
+
+---
+
+### **Status Atual**
+
+| Componente           | Status            | Observações                                  |
+| -------------------- | ----------------- | -------------------------------------------- |
+| EstoqueService       | ✅ 100% funcional  | Logs otimizados, integração RabbitMQ estável |
+| VendasService        | ✅ 100% funcional  | Comunicação com Estoque validada             |
+| API Gateway          | ✅ 100% funcional  | JWT e roteamento testados                    |
+| RabbitMQ             | ✅ 100% funcional  | Fila de eventos consistente                  |
+| Testes automatizados | ✅ Todos aprovados | 16 testes Estoque + testes Vendas            |
+| Melhoria futura      | 🕓 Planejada      | Ajuste de estoque quando pedido é reduzido   |
+
+---
+
+### **Conclusão**
+
+✅ **Projeto funcional e completo**, atendendo a todos os requisitos da proposta.
+📊 **Logs aprimorados**, facilitando rastreamento e depuração.
+🕓 **Melhoria futura identificada:** ajuste dinâmico do estoque em alterações de pedidos (diminuição de quantidade).
+
+---
+
+
+
+
+
 
 
 
