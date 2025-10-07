@@ -22,7 +22,6 @@ namespace VendasService.Controllers
         private readonly IRabbitMqProducerService _rabbitMqService;
         private readonly IEstoqueClientService _estoqueClient;
         private readonly ILogger<PedidosController> _logger;
-       
 
         public PedidosController(
             VendasContext context,
@@ -239,8 +238,94 @@ namespace VendasService.Controllers
 
             return Ok(new { message = $"Pedido {pedido.Id} reenviado para RabbitMQ." });
         }
+
+        // 🔹 Consulta avançada de pedidos com filtros, paginação e ordenação
+        [HttpGet("consulta")]
+        public async Task<ActionResult<IEnumerable<Pedido>>> ConsultaPedidos(
+            [FromQuery] string? clienteNome,
+            [FromQuery] DateTime? dataInicio,
+            [FromQuery] DateTime? dataFim,
+            [FromQuery] string? orderBy = "DataPedido",
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10)
+        {
+            _logger.LogInformation(
+                "Iniciando consulta de pedidos. Cliente: {Cliente}, DataInicio: {DataInicio}, DataFim: {DataFim}, OrderBy: {OrderBy}, Page: {Page}, PageSize: {PageSize}",
+                clienteNome ?? "(null)",
+                dataInicio?.ToString("MM/dd/yyyy HH:mm:ss") ?? "(null)",
+                dataFim?.ToString("MM/dd/yyyy HH:mm:ss") ?? "(null)",
+                orderBy,
+                page,
+                pageSize
+            );
+
+            var query = _context.Pedidos.Include(p => p.Itens).AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(clienteNome))
+                query = query.Where(p => p.ClienteNome.Contains(clienteNome.Trim()));
+
+            if (dataInicio.HasValue)
+                query = query.Where(p => p.DataPedido >= dataInicio.Value);
+            if (dataFim.HasValue)
+                query = query.Where(p => p.DataPedido <= dataFim.Value);
+
+            query = orderBy?.ToLower() switch
+            {
+                "cliente" => query.OrderBy(p => p.ClienteNome),
+                "cliente_desc" => query.OrderByDescending(p => p.ClienteNome),
+                "datapedido_desc" => query.OrderByDescending(p => p.DataPedido),
+                _ => query.OrderBy(p => p.DataPedido)
+            };
+
+            var totalItems = await query.CountAsync();
+            var pedidos = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            // 🔸 Log detalhado de cada pedido e seus itens
+            foreach (var p in pedidos)
+            {
+                _logger.LogInformation(
+                    "PedidoID: {PedidoID}, Cliente: {Cliente}, DataPedido: {DataPedido}, ValorTotal: {ValorTotal}, Itens: {QtdItens}",
+                    p.Id,
+                    p.ClienteNome,
+                    p.DataPedido.ToString("MM/dd/yyyy HH:mm:ss"),
+                    p.Itens.Sum(i => i.ValorTotal),
+                    p.Itens.Count
+                );
+
+                foreach (var item in p.Itens)
+                {
+                    _logger.LogInformation(
+                        "  -> ItemID: {ItemID}, ProdutoID: {ProdutoID}, Quantidade: {Quantidade}, ValorTotal: {ValorItem}",
+                        item.Id,
+                        item.ProdutoId,
+                        item.Quantidade,
+                        item.ValorTotal
+                    );
+                }
+            }
+
+            _logger.LogInformation(
+                "Consulta de pedidos finalizada. TotalItems: {TotalItems}, Itens retornados: {ItensRetornados}",
+                totalItems,
+                pedidos.Count
+            );
+
+            return Ok(new
+            {
+                TotalItems = totalItems,
+                Page = page,
+                PageSize = pageSize,
+                Items = pedidos
+            });
+        }
+
+
     }
 }
+
 
 
 

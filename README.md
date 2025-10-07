@@ -1,175 +1,4 @@
-# 📖 README.md (versão unificada)
-
-# 🛒 Sistema de Gerenciamento de Estoque e Vendas – Microserviços
-
-## 📌 Descrição
-Este projeto implementa uma arquitetura de **microserviços** para gerenciamento de estoque e vendas em uma plataforma de e-commerce.  
-A solução contempla:
-
-- **EstoqueService** → CRUD de produtos, controle de estoque e verificação de disponibilidade.  
-- **VendasService** → Criação, consulta e gerenciamento de pedidos com integração ao estoque.  
-- **ApiGateway** → Centraliza todas as requisições, roteando para os microserviços corretos.  
-- **RabbitMQ** → Comunicação assíncrona entre os serviços.  
-- **JWT** → Autenticação e proteção dos endpoints.  
-
----
-
-## ⚙️ Tecnologias
-- .NET 8 / C#
-- Entity Framework Core
-- SQL Server (com suporte a InMemory DB para testes)
-- RabbitMQ
-- JWT (Json Web Token)
-- xUnit para testes
-- Ocelot API Gateway
-- Swagger para documentação de APIs
-
----
-
-## 🏗️ Arquitetura
-```
-
-Cliente → API Gateway → EstoqueService
-↘→ VendasService
-
-RabbitMQ → Comunicação assíncrona entre Estoque e Vendas
-
-````
-
----
-
-## 🚀 Executando o Projeto
-
-1. **Subir RabbitMQ** (Docker ou local)
-```bash
-docker run -d --hostname rabbit --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
-````
-
-2. **Executar os microserviços**
-
-```bash
-dotnet run --project EstoqueService
-dotnet run --project VendasService
-dotnet run --project ApiGateway
-```
-
-3. **Acessar Swagger**:
-
-* Estoque: `http://localhost:5068/swagger`
-* Vendas: `http://localhost:5111/swagger`
-* Gateway: `http://localhost:5271/swagger`
-
-4. **Executar os testes automatizados**
-
-```bash
-dotnet test
-```
-
----
-
-## 🔑 Autenticação
-
-Todos os endpoints de escrita (POST/PUT/DELETE) exigem **JWT**.
-Fluxo:
-
-1. `POST /api/Auth/login` → gera token JWT.
-2. Usar `Bearer {token}` no header `Authorization` para acessar endpoints protegidos.
-
----
-
-## 📦 Endpoints Principais
-
-### 🔹 EstoqueService (`http://localhost:5068`)
-
-**Auth**
-
-* `POST /api/Auth/login` → autenticação
-
-**Produtos**
-
-* `GET /api/Produtos` → listar todos os produtos
-* `GET /api/Produtos/{id}` → obter produto por ID
-* `POST /api/Produtos` → criar produto (JWT)
-* `PUT /api/Produtos/{id}` → atualizar produto (JWT)
-* `DELETE /api/Produtos/{id}` → excluir produto (JWT)
-* `GET /api/Produtos/{id}/disponibilidade/{quantidade}` → verificar disponibilidade
-
----
-
-### 🔹 VendasService (`http://localhost:5111`)
-
-**Auth**
-
-* `POST /api/Auth/login` → autenticação
-
-**Pedidos**
-
-* `GET /api/Pedidos` → listar pedidos
-* `POST /api/Pedidos` → criar pedido (JWT)
-* `GET /api/Pedidos/{id}` → buscar pedido por ID
-* `PUT /api/Pedidos/{id}` → atualizar pedido (JWT)
-* `DELETE /api/Pedidos/{id}` → excluir pedido (JWT)
-* `GET /api/Pedidos/consulta` → consulta avançada (filtros, paginação, ordenação)
-* `POST /api/Pedidos/reenviar-rabbit/{id}` → reenviar evento RabbitMQ
-
----
-
-### 🔹 API Gateway (`http://localhost:5271`)
-
-O **ApiGateway** redireciona todas as requisições externas para os microserviços.
-Configuração principal (via `ocelot.json`):
-
-**Estoque**
-
-* `/estoque/produtos` → EstoqueService `/api/Produtos`
-* `/estoque/produtos/{id}` → EstoqueService `/api/Produtos/{id}`
-
-**Vendas**
-
-* `/vendas/pedidos` → VendasService `/api/Pedidos`
-* `/vendas/pedidos/{id}` → VendasService `/api/Pedidos/{id}`
-* `/vendas/pedidos/consulta` → VendasService `/api/Pedidos/consulta`
-* `/vendas/pedidos/reenviar-rabbit/{id}` → VendasService `/api/Pedidos/reenviar-rabbit/{id}`
-
----
-
-## 🧪 Testes
-
-* **EstoqueService.Tests** → CRUD de produtos + validações.
-* **VendasService.Tests** → criação/validação de pedidos, integração RabbitMQ fake.
-* **ApiGateway** → testes de roteamento (via curl/Postman).
-
-Todos os testes **aprovados** ✅
-
----
-
-## 📊 Logs e Monitoramento
-
-* Logs básicos de operações nos serviços.
-* RabbitMQ registra eventos de atualização de estoque e pedidos.
-
----
-
-## ✅ Status Final
-
-* EstoqueService: 100% implementado e testado
-* VendasService: 100% implementado e testado
-* ApiGateway: 100% implementado e testado
-* RabbitMQ: 100% integrado
-* JWT: 100% funcional
-* Testes automatizados: concluídos ✅
-* Documentação Swagger + README unificado: concluído ✅
-
-## 📌 Próximos Passos (Futuros / Opcional)
-
-* Melhorar logs para auditoria completa.
-* Adicionar monitoramento (Prometheus / Grafana).
-* Criar microsserviço extra (pagamentos/envios) para escalar o sistema.
-
-
-### README unificado adicionando as "configurações do Docker Compose e do SQL Server/RabbitMQ", detalhando o passo a passo de execução completo ###
-
----
+# README unificado adicionando as "configurações do Docker Compose e do SQL Server/RabbitMQ", detalhando o passo a passo de execução completo #
 
 # 📖 README.md (versão unificada final)
 
@@ -210,8 +39,6 @@ Cliente → API Gateway → EstoqueService
 
 RabbitMQ → Comunicação assíncrona entre Estoque e Vendas
 ```
-
----
 
 ## 🐳 Docker Compose – Infraestrutura
 
@@ -398,52 +225,52 @@ O **ApiGateway** redireciona todas as requisições externas para os microservi�
 
 
 📖 README.md (versão unificada final – 07/10/2025)
-🛒 Sistema de Gerenciamento de Estoque e Vendas – Microserviços
-📌 Descrição
 
-Este projeto implementa uma arquitetura de microserviços para gerenciamento de estoque e vendas em uma plataforma de e-commerce.
-A solução contempla:
+# 📖 Sistema de Gerenciamento de Estoque e Vendas – Microserviços
 
-EstoqueService → CRUD de produtos, controle de estoque e verificação de disponibilidade.
+## 🛒 Descrição
 
-VendasService → Criação, consulta e gerenciamento de pedidos com integração ao estoque.
+Projeto de microserviços para gerenciamento de estoque e vendas em e-commerce, contemplando:
 
-ApiGateway → Centraliza todas as requisições, roteando para os microserviços corretos.
+* **EstoqueService** → CRUD de produtos, controle de estoque e verificação de disponibilidade  
+* **VendasService** → Criação, consulta e gerenciamento de pedidos com integração ao estoque  
+* **ApiGateway** → Centraliza requisições e roteia para os microserviços  
+* **RabbitMQ** → Comunicação assíncrona entre serviços  
+* **JWT** → Autenticação e proteção dos endpoints  
 
-RabbitMQ → Comunicação assíncrona entre os serviços.
+---
 
-JWT → Autenticação e proteção dos endpoints.
+## ⚙️ Tecnologias
 
-⚙️ Tecnologias
+* .NET 8 / C#  
+* Entity Framework Core  
+* SQL Server (com suporte a InMemory DB para testes)  
+* RabbitMQ  
+* JWT (Json Web Token)  
+* xUnit para testes automatizados  
+* Ocelot API Gateway  
+* Swagger para documentação  
+* Docker / Docker Compose  
 
-.NET 8 / C#
+---
 
-Entity Framework Core
+## 🏗️ Arquitetura
 
-SQL Server (com suporte a InMemory DB para testes)
 
-RabbitMQ
 
-JWT (Json Web Token)
-
-xUnit para testes automatizados
-
-Ocelot API Gateway
-
-Swagger para documentação de APIs
-
-Docker / Docker Compose
-
-🏗️ Arquitetura
 Cliente → API Gateway → EstoqueService
-             ↘→ VendasService
+↘→ VendasService
 
 RabbitMQ → Comunicação assíncrona entre Estoque e Vendas
 
-🐳 Docker Compose – Infraestrutura
 
-Arquivo docker-compose.yml:
+---
 
+## 🐳 Docker Compose – Infraestrutura
+
+Arquivo `docker-compose.yml`:
+
+```yaml
 version: '3.8'
 
 services:
@@ -475,23 +302,19 @@ networks:
     driver: bridge
 
 
-⚙️ Todas as configurações de conexão (SQL Server e RabbitMQ) estão alinhadas com os arquivos appsettings.json.
+As configurações de conexão estão alinhadas com appsettings.json.
 
-🚀 Executando o Projeto – Passo a Passo
-1️⃣ Subir a infraestrutura com Docker
+🚀 Executando o Projeto
+1️⃣ Subir infraestrutura
 docker-compose up -d
-
-
-Verifique os containers:
-
 docker ps
 
 
-SQL Server: localhost:1433
+SQL Server → localhost:1433
 
-RabbitMQ: localhost:5672 (Management UI em http://localhost:15672, usuário: admin, senha: admin)
+RabbitMQ → localhost:5672 (Management UI: http://localhost:15672, usuário: admin, senha: admin)
 
-2️⃣ Executar os microserviços localmente
+2️⃣ Executar microserviços
 dotnet run --project EstoqueService
 dotnet run --project VendasService
 dotnet run --project ApiGateway
@@ -504,72 +327,60 @@ VendasService → http://localhost:5111/swagger
 
 API Gateway → http://localhost:5271/swagger
 
-4️⃣ Executar os testes automatizados
+4️⃣ Testes automatizados
 dotnet test
 
 
-EstoqueService.Tests → CRUD + validações de estoque.
+EstoqueService.Tests → CRUD e validações
 
-VendasService.Tests → criação/validação de pedidos + integração RabbitMQ fake.
+VendasService.Tests → pedidos e integração RabbitMQ fake
 
-API Gateway → roteamento e segurança via JWT.
+API Gateway → roteamento e JWT
 
-✅ Todos os testes devem ser aprovados.
+✅ Todos os testes devem passar
 
 🔑 Autenticação JWT
 
-Todos os endpoints de escrita (POST, PUT, DELETE) exigem JWT.
+POST /api/Auth/login → gera token
 
-POST /api/Auth/login → gera token JWT.
-
-Usar Bearer {token} no header Authorization para acessar endpoints protegidos.
+Usar Bearer {token} no header Authorization
 
 📦 Endpoints Principais
 🔹 EstoqueService (http://localhost:5068)
 
-Auth
-
-POST /api/Auth/login → autenticação
-
 Produtos
 
-GET /api/Produtos → listar todos os produtos
+GET /api/Produtos → listar
 
-GET /api/Produtos/{id} → obter produto por ID
+GET /api/Produtos/{id} → buscar por ID
 
-POST /api/Produtos → criar produto (JWT)
+POST /api/Produtos → criar (JWT)
 
-PUT /api/Produtos/{id} → atualizar produto (JWT)
+PUT /api/Produtos/{id} → atualizar (JWT)
 
-DELETE /api/Produtos/{id} → excluir produto (JWT)
+DELETE /api/Produtos/{id} → excluir (JWT)
 
-GET /api/Produtos/{id}/disponibilidade/{quantidade} → verificar disponibilidade
+GET /api/Produtos/{id}/disponibilidade/{quantidade} → verificar estoque
 
 🔹 VendasService (http://localhost:5111)
 
-Auth
-
-POST /api/Auth/login → autenticação
-
 Pedidos
 
-GET /api/Pedidos → listar pedidos
+GET /api/Pedidos → listar
 
-POST /api/Pedidos → criar pedido (JWT)
+POST /api/Pedidos → criar (JWT)
 
-GET /api/Pedidos/{id} → buscar pedido por ID
+GET /api/Pedidos/{id} → buscar por ID
 
-PUT /api/Pedidos/{id} → atualizar pedido (JWT)
+PUT /api/Pedidos/{id} → atualizar (JWT)
 
-DELETE /api/Pedidos/{id} → excluir pedido (JWT)
+DELETE /api/Pedidos/{id} → excluir (JWT)
 
-GET /api/Pedidos/consulta → consulta avançada (filtros, paginação, ordenação)
+GET /api/Pedidos/consulta → filtros, paginação e ordenação
 
 POST /api/Pedidos/reenviar-rabbit/{id} → reenviar evento RabbitMQ
 
 🔹 API Gateway (http://localhost:5271)
-
-O ApiGateway redireciona todas as requisições externas para os microserviços.
 
 Estoque
 
@@ -588,60 +399,39 @@ Vendas
 /vendas/pedidos/reenviar-rabbit/{id} → VendasService /api/Pedidos/reenviar-rabbit/{id}
 
 📊 Logs e Monitoramento
-🆕 Melhorias Recentes (Outubro/2025)
 
-O EstoqueService recebeu uma grande melhoria nos logs do consumidor RabbitMQ, agora com:
+Logs básicos nos serviços
 
-Estrutura visual clara e padronizada.
+RabbitMQ registra eventos de estoque e pedidos
 
-Exibição de:
+Melhorias recentes:
 
-ID do Pedido e Cliente;
+Estrutura clara e padronizada
 
-Data/hora de processamento;
+ID do pedido, cliente, data/hora, total de itens, estoque anterior/atual
 
-Total de itens;
+Marcação de início/fim do processamento (📥 / ✅)
 
-Estoque anterior, quantidade retirada e estoque atualizado.
-
-Logs marcando início e fim do processamento (📥 INÍCIO PROCESSAMENTO / ✅ Estoque atualizado com sucesso).
-
-Melhoria na decodificação de caracteres UTF-8 (nomes de clientes com acentuação).
-
-Essas melhorias tornaram a auditoria e rastreabilidade muito mais fáceis entre Estoque e Vendas.
+Suporte UTF-8 completo
 
 ✅ Status Final
 Serviço	Status	Observações
-EstoqueService	✅ 100% funcional	Logs aprimorados e integração RabbitMQ estável
-VendasService	✅ 100% funcional	Comunicação com Estoque validada
-API Gateway	✅ 100% funcional	JWT e roteamento testados
-RabbitMQ	✅ 100% funcional	Fila consistente
-Testes automatizados	✅ Todos aprovados	Incluindo integração entre serviços
-📌 Próximos Passos (Futuros / Opcionais)
+EstoqueService	✅ 100%	Logs aprimorados e RabbitMQ estável
+VendasService	✅ 100%	Comunicação com Estoque validada
+API Gateway	✅ 100%	JWT e roteamento testados
+RabbitMQ	✅ 100%	Fila consistente
+Testes	✅ Todos aprovados	Incluindo integração entre serviços
+📌 Próximos Passos / Futuro
 
-🔁 Ajuste de estoque em alterações de pedidos
+Ajuste automático de estoque em alterações de pedidos
 
-Implementar cálculo de diferença entre pedido anterior e novo, permitindo reposição automática em casos de diminuição da quantidade.
+Auditoria de logs persistente com origem do evento
 
-Exigirá armazenamento de histórico de pedidos processados e comparação antes/depois.
+Consolidar exemplos de Swagger + RabbitMQ
 
-📜 Auditoria aprimorada de logs
-
-Persistir logs em tabela dedicada e incluir identificação de origem do evento (Vendas → Estoque).
-
-📘 Documentação final (Swagger e README)
-
-Consolidar exemplos de requisições e fluxos RabbitMQ.
-
-📈 Monitoramento (Prometheus / Grafana)
-
-Adicionar métricas de filas, tempo médio de processamento e falhas.
+Monitoramento via Prometheus / Grafana
 
 🧩 Conclusão
 
-✅ Todos os microserviços, integrações, testes, logs e autenticação JWT estão totalmente implementados e funcionais.
-💡 O sistema está 100% estável, preparado para auditoria aprimorada e ajustes dinâmicos de estoque em futuras versões.
-
-
-
-
+✅ Microserviços, integrações, testes, logs e JWT totalmente implementados.
+💡 Sistema está estável e pronto para auditoria e ajustes dinâmicos de estoque.
